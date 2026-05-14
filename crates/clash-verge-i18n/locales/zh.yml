@@ -1,0 +1,67 @@
+_version: 1
+notifications:
+  dashboardToggled:
+    title: Trang chủ
+    body: Trạng thái hiển thị trang chủ đã được cập nhật.
+  clashModeChanged:
+    title: Đổi chế độ
+    body: Đã chuyển sang chế độ {mode}.
+  systemProxyToggled:
+    title: Proxy hệ thống
+    "on": Đã bật proxy hệ thống.
+    "off": Đã tắt proxy hệ thống.
+  tunModeToggled:
+    title: Chế độ TUN
+    "on": Đã bật chế độ TUN.
+    "off": Đã tắt chế độ TUN.
+  lightweightModeEntered:
+    title: Chế độ nhẹ
+    body: Đã chuyển sang chế độ nhẹ.
+  profilesReactivated:
+    title: Cấu hình
+    body: Cấu hình đã được kích hoạt lại.
+  appQuit:
+    title: Sắp thoát
+    body: SENNET VPN sắp thoát.
+  appHidden:
+    title: Ứng dụng đã ẩn
+    body: SENNET VPN đang chạy nền.
+  updateReady:
+    title: Cập nhật SENNET VPN
+    body: Phiên bản mới (v{version}) đã tải xong, cài đặt ngay?
+    installNow: Cài ngay
+    later: Để sau
+service:
+  adminInstallPrompt: Cài dịch vụ SENNET VPN cần quyền quản trị viên.
+  adminUninstallPrompt: Gỡ dịch vụ SENNET VPN cần quyền quản trị viên.
+tray:
+  dashboard: Trang chủ
+  ruleMode: Chế độ quy tắc
+  globalMode: Chế độ toàn cục
+  directMode: Chế độ trực tiếp
+  outboundModes: Chế độ kết nối
+  rule: Quy tắc
+  direct: Trực tiếp
+  global: Toàn cục
+  profiles: Cấu hình
+  proxies: Máy chủ
+  systemProxy: Proxy hệ thống
+  tunMode: Chế độ TUN
+  closeAllConnections: Đóng tất cả kết nối
+  lightweightMode: Chế độ nhẹ
+  copyEnv: Sao chép biến môi trường
+  confDir: Thư mục cấu hình
+  coreDir: Thư mục core
+  logsDir: Thư mục nhật ký
+  openDir: Mở thư mục
+  appLog: Nhật ký ứng dụng
+  coreLog: Nhật ký core
+  restartClash: Khởi động lại core
+  restartApp: Khởi động lại ứng dụng
+  vergeVersion: Phiên bản
+  more: Khác
+  exit: Thoát
+  tooltip:
+    systemProxy: Proxy hệ thống
+    tun: TUN
+    profile: Cấu hình

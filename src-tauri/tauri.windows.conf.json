@@ -1,0 +1,35 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "identifier": "com.sennetvpn.app",
+  "bundle": {
+    "targets": ["nsis"],
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "",
+      "webviewInstallMode": {
+        "type": "embedBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico",
+        "languages": ["English"],
+        "installMode": "perMachine",
+        "template": "./packages/windows/installer.nsi",
+        "sidebarImage": "./images/nsis-sidebar.bmp",
+        "headerImage": "./images/nsis-header.bmp"
+      }
+    }
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "capabilities": [
+        "desktop-capability",
+        "desktop-windows-capability",
+        "migrated"
+      ]
+    }
+  }
+}
