@@ -83,18 +83,19 @@ jobs:
           pnpm i
           pnpm run prebuild ${{ matrix.target }}
 
-      - name: Build desktop bundle
+      - name: Build desktop bundle (Windows)
+        if: startsWith(matrix.target, 'x86_64-pc-windows') || startsWith(matrix.target, 'aarch64-pc-windows')
         run: pnpm build --target ${{ matrix.target }}
         env:
           NODE_OPTIONS: "--max_old_space_size=4096"
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Build desktop bundle (macOS unsigned)
+        if: endsWith(matrix.target, 'apple-darwin')
+        run: pnpm build --target ${{ matrix.target }}
+        env:
+          NODE_OPTIONS: "--max_old_space_size=4096"
 
       - name: Ensure release exists
         env:
