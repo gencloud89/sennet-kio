@@ -98,11 +98,14 @@ jobs:
           NODE_OPTIONS: "--max_old_space_size=4096"
 
       - name: Ensure release exists
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release view "${{ inputs.tag }}" >/dev/null 2>&1 || \
-          gh release create "${{ inputs.tag }}" --draft --title "SENNET VPN Desktop ${{ inputs.tag }}" --notes "Desktop release assets."
+          gh release view "${{ inputs.tag }}" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create "${{ inputs.tag }}" --draft --title "SENNET VPN Desktop ${{ inputs.tag }}" --notes "Desktop release assets."
+          }
 
       - name: Upload release assets
         shell: bash
