@@ -1,9 +1,12 @@
 use clash_verge_logging::{Type, logging};
-use reqwest::{Client, StatusCode};
+use crate::utils::dirs;
+use reqwest::{Client, StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 const BASE_URL: &str = "https://kio.senviet.us";
+const DEFAULT_SUBSCRIBE_DOMAIN: &str = "venom.cdy.892.htd892.com";
+const DOMAIN_CONFIG_PATH: &str = "/domain-backup-config.json";
 const USER_AGENT: &str = "SENNET-VPN/1.0 clash-compatible";
 const TIMEOUT_SECS: u64 = 10;
 
@@ -74,6 +77,44 @@ struct SubscribeResponse {
     data: SubscribeData,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RemoteDomainConfig {
+    panel_domains: Option<Vec<std::string::String>>,
+    subscribe_domains: Option<Vec<std::string::String>>,
+    oss_domains: Option<Vec<std::string::String>>,
+}
+
+#[derive(Debug, Clone)]
+struct DomainConfig {
+    panel_domains: Vec<std::string::String>,
+    subscribe_domains: Vec<std::string::String>,
+    oss_domains: Vec<std::string::String>,
+}
+
+impl Default for DomainConfig {
+    fn default() -> Self {
+        Self {
+            panel_domains: vec![BASE_URL.to_string()],
+            subscribe_domains: vec![DEFAULT_SUBSCRIBE_DOMAIN.to_string()],
+            oss_domains: vec![],
+        }
+    }
+}
+
+impl DomainConfig {
+    fn from_remote(remote: RemoteDomainConfig) -> Self {
+        let mut config = Self::default();
+
+        config.panel_domains = normalize_domains(remote.panel_domains, true)
+            .unwrap_or(config.panel_domains);
+        config.subscribe_domains = normalize_domains(remote.subscribe_domains, false)
+            .unwrap_or(config.subscribe_domains);
+        config.oss_domains = normalize_domains(remote.oss_domains, true).unwrap_or_default();
+
+        config
+    }
+}
+
 fn build_client() -> Result<Client, V2BoardError> {
     Client::builder()
         .timeout(Duration::from_secs(TIMEOUT_SECS))
@@ -82,41 +123,169 @@ fn build_client() -> Result<Client, V2BoardError> {
         .map_err(|e| V2BoardError::NetworkError(e.to_string()))
 }
 
+fn normalize_domains(
+    domains: Option<Vec<std::string::String>>,
+    require_scheme: bool,
+) -> Option<Vec<std::string::String>> {
+    let normalized: Vec<std::string::String> = domains?
+        .into_iter()
+        .filter_map(|domain| {
+            let trimmed = domain.trim().trim_end_matches('/').to_string();
+            if trimmed.is_empty() {
+                return None;
+            }
+
+            if require_scheme || trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+                if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+                    Some(trimmed)
+                } else {
+                    Some(format!("https://{trimmed}"))
+                }
+            } else {
+                Some(
+                    trimmed
+                        .trim_start_matches("https://")
+                        .trim_start_matches("http://")
+                        .to_string(),
+                )
+            }
+        })
+        .collect();
+
+    (!normalized.is_empty()).then_some(normalized)
+}
+
+async fn domain_config_path() -> Option<std::path::PathBuf> {
+    dirs::app_home_dir().ok().map(|dir| dir.join("domain-backup-config.json"))
+}
+
+async fn load_cached_domain_config() -> Option<DomainConfig> {
+    let path = domain_config_path().await?;
+    let text = tokio::fs::read_to_string(path).await.ok()?;
+    let remote = serde_json::from_str::<RemoteDomainConfig>(&text).ok()?;
+
+    Some(DomainConfig::from_remote(remote))
+}
+
+async fn save_domain_config(remote: &RemoteDomainConfig) {
+    let Some(path) = domain_config_path().await else {
+        return;
+    };
+
+    if let Some(parent) = path.parent() {
+        let _ = tokio::fs::create_dir_all(parent).await;
+    }
+
+    if let Ok(text) = serde_json::to_string_pretty(remote) {
+        let _ = tokio::fs::write(path, text).await;
+    }
+}
+
+async fn resolve_domain_config(client: &Client) -> DomainConfig {
+    let cached = load_cached_domain_config().await;
+    let seed_config = cached.clone().unwrap_or_default();
+
+    for domain in seed_config
+        .panel_domains
+        .iter()
+        .chain(seed_config.oss_domains.iter())
+    {
+        let url = format!("{domain}{DOMAIN_CONFIG_PATH}");
+        let Ok(resp) = client.get(&url).send().await else {
+            continue;
+        };
+
+        if !resp.status().is_success() {
+            continue;
+        }
+
+        let Ok(text) = resp.text().await else {
+            continue;
+        };
+
+        let Ok(remote) = serde_json::from_str::<RemoteDomainConfig>(&text) else {
+            continue;
+        };
+
+        save_domain_config(&remote).await;
+        return DomainConfig::from_remote(remote);
+    }
+
+    cached.unwrap_or_default()
+}
+
+fn subscribe_url_candidates(
+    subscribe_url: &str,
+    config: &DomainConfig,
+) -> Vec<std::string::String> {
+    let mut urls = vec![subscribe_url.to_string()];
+    let Ok(parsed) = Url::parse(subscribe_url) else {
+        return urls;
+    };
+
+    for domain in &config.subscribe_domains {
+        let mut candidate = parsed.clone();
+        let host = domain
+            .trim()
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .trim_end_matches('/');
+
+        if candidate.set_host(Some(host)).is_ok() {
+            let value = candidate.to_string();
+            if !urls.contains(&value) {
+                urls.push(value);
+            }
+        }
+    }
+
+    urls
+}
+
 pub struct V2BoardClient;
 
 impl V2BoardClient {
     pub async fn login(email: &str, password: &str) -> Result<LoginResult, V2BoardError> {
         let client = build_client()?;
-        let url = format!("{BASE_URL}/api/v1/passport/auth/login");
+        let domain_config = resolve_domain_config(&client).await;
 
         let body = serde_json::json!({ "email": email, "password": password });
 
         logging!(info, Type::Config, "V2Board login attempt for: {}", email);
 
-        let resp = client
-            .post(&url)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| V2BoardError::NetworkError(e.to_string()))?;
+        let mut last_error = None;
+        for panel_domain in domain_config.panel_domains {
+            let url = format!("{panel_domain}/api/v1/passport/auth/login");
+            let resp = match client.post(&url).json(&body).send().await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    last_error = Some(V2BoardError::NetworkError(e.to_string()));
+                    continue;
+                }
+            };
 
-        match resp.status() {
-            StatusCode::OK => {
-                let text = resp
-                    .text()
-                    .await
-                    .map_err(|e| V2BoardError::NetworkError(e.to_string()))?;
+            match resp.status() {
+                StatusCode::OK => {
+                    let text = resp
+                        .text()
+                        .await
+                        .map_err(|e| V2BoardError::NetworkError(e.to_string()))?;
 
-                let parsed: LoginResponse = serde_json::from_str(&text)
-                    .map_err(|e| V2BoardError::ParseError(format!("{e}: {text}")))?;
+                    let parsed: LoginResponse = serde_json::from_str(&text)
+                        .map_err(|e| V2BoardError::ParseError(format!("{e}: {text}")))?;
 
-                Ok(LoginResult {
-                    auth_data: parsed.data.auth_data,
-                })
+                    return Ok(LoginResult {
+                        auth_data: parsed.data.auth_data,
+                    });
+                }
+                StatusCode::FORBIDDEN => return Err(V2BoardError::Unauthorized),
+                status => {
+                    last_error = Some(V2BoardError::NetworkError(format!("HTTP {status}")));
+                }
             }
-            StatusCode::FORBIDDEN => Err(V2BoardError::Unauthorized),
-            status => Err(V2BoardError::NetworkError(format!("HTTP {status}"))),
         }
+
+        Err(last_error.unwrap_or_else(|| V2BoardError::NetworkError("No panel domain available".into())))
     }
 
     pub async fn get_subscribe_url(auth_data: &str) -> Result<std::string::String, V2BoardError> {
@@ -142,32 +311,116 @@ impl V2BoardClient {
 
     async fn fetch_subscribe_data(auth_data: &str) -> Result<SubscribeData, V2BoardError> {
         let client = build_client()?;
-        let url = format!("{BASE_URL}/api/v1/user/getSubscribe");
+        let domain_config = resolve_domain_config(&client).await;
 
-        let resp = client
-            .get(&url)
-            .header("Authorization", auth_data)
-            .send()
-            .await
-            .map_err(|e| V2BoardError::NetworkError(e.to_string()))?;
+        let mut last_error = None;
+        for panel_domain in domain_config.panel_domains {
+            let url = format!("{panel_domain}/api/v1/user/getSubscribe");
+            let resp = match client.get(&url).header("Authorization", auth_data).send().await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    last_error = Some(V2BoardError::NetworkError(e.to_string()));
+                    continue;
+                }
+            };
 
-        match resp.status() {
-            StatusCode::OK => {
-                let text = resp
-                    .text()
-                    .await
-                    .map_err(|e| V2BoardError::NetworkError(e.to_string()))?;
+            match resp.status() {
+                StatusCode::OK => {
+                    let text = resp
+                        .text()
+                        .await
+                        .map_err(|e| V2BoardError::NetworkError(e.to_string()))?;
 
-                let parsed: SubscribeResponse = serde_json::from_str(&text)
-                    .map_err(|e| V2BoardError::ParseError(format!("{e}: {text}")))?;
+                    let parsed: SubscribeResponse = serde_json::from_str(&text)
+                        .map_err(|e| V2BoardError::ParseError(format!("{e}: {text}")))?;
 
-                Ok(parsed.data)
+                    return Ok(parsed.data);
+                }
+                StatusCode::FORBIDDEN => {
+                    logging!(warn, Type::Config, "V2Board token expired (403)");
+                    return Err(V2BoardError::Unauthorized);
+                }
+                status => {
+                    last_error = Some(V2BoardError::NetworkError(format!("HTTP {status}")));
+                }
             }
-            StatusCode::FORBIDDEN => {
-                logging!(warn, Type::Config, "V2Board token expired (403)");
-                Err(V2BoardError::Unauthorized)
-            }
-            status => Err(V2BoardError::NetworkError(format!("HTTP {status}"))),
         }
+
+        Err(last_error.unwrap_or_else(|| V2BoardError::NetworkError("No panel domain available".into())))
+    }
+
+    pub async fn fetch_subscription_content(
+        auth_data: &str,
+        subscribe_url: &str,
+    ) -> Result<std::string::String, V2BoardError> {
+        let client = build_client()?;
+        let domain_config = resolve_domain_config(&client).await;
+        let mut last_error = None;
+
+        for url in subscribe_url_candidates(subscribe_url, &domain_config) {
+            let resp = match client
+                .get(&url)
+                .header("Authorization", auth_data)
+                .header("User-Agent", USER_AGENT)
+                .send()
+                .await
+            {
+                Ok(resp) => resp,
+                Err(e) => {
+                    last_error = Some(V2BoardError::NetworkError(e.to_string()));
+                    continue;
+                }
+            };
+
+            match resp.status() {
+                StatusCode::OK => {
+                    return resp
+                        .text()
+                        .await
+                        .map_err(|e| V2BoardError::NetworkError(e.to_string()));
+                }
+                StatusCode::FORBIDDEN => return Err(V2BoardError::Unauthorized),
+                status => {
+                    last_error = Some(V2BoardError::NetworkError(format!("HTTP {status}")));
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| V2BoardError::NetworkError("No subscribe domain available".into())))
+    }
+
+    pub async fn resolve_subscribe_url(
+        auth_data: &str,
+        subscribe_url: &str,
+    ) -> Result<std::string::String, V2BoardError> {
+        let client = build_client()?;
+        let domain_config = resolve_domain_config(&client).await;
+        let mut last_error = None;
+
+        for url in subscribe_url_candidates(subscribe_url, &domain_config) {
+            let resp = match client
+                .get(&url)
+                .header("Authorization", auth_data)
+                .header("User-Agent", USER_AGENT)
+                .send()
+                .await
+            {
+                Ok(resp) => resp,
+                Err(e) => {
+                    last_error = Some(V2BoardError::NetworkError(e.to_string()));
+                    continue;
+                }
+            };
+
+            match resp.status() {
+                StatusCode::OK => return Ok(url),
+                StatusCode::FORBIDDEN => return Err(V2BoardError::Unauthorized),
+                status => {
+                    last_error = Some(V2BoardError::NetworkError(format!("HTTP {status}")));
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| V2BoardError::NetworkError("No subscribe domain available".into())))
     }
 }

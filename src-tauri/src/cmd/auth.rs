@@ -206,6 +206,17 @@ pub async fn sync_subscription(auth_data: &str) -> Result<(), std::string::Strin
     let subscribe_url = V2BoardClient::get_subscribe_url(auth_data)
         .await
         .map_err(|e| e.to_string())?;
+    let resolved_subscribe_url = V2BoardClient::resolve_subscribe_url(auth_data, &subscribe_url)
+        .await
+        .unwrap_or_else(|e| {
+            logging!(
+                warn,
+                Type::Config,
+                "SENNET: subscribe domain fallback failed, using original URL: {}",
+                e
+            );
+            subscribe_url.clone()
+        });
 
     let option = PrfOption {
         user_agent: Some(String::from("SENNET-VPN/1.0 clash-compatible")),
@@ -214,7 +225,7 @@ pub async fn sync_subscription(auth_data: &str) -> Result<(), std::string::Strin
         ..Default::default()
     };
 
-    let mut item = PrfItem::from_url(&subscribe_url, None, None, Some(&option))
+    let mut item = PrfItem::from_url(&resolved_subscribe_url, None, None, Some(&option))
         .await
         .map_err(|e| e.to_string())?;
 
