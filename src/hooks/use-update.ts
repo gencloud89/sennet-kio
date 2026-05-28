@@ -33,12 +33,10 @@ export const updateLastCheckTime = (timestamp?: number): number => {
 
 export const useUpdate = (enabled: boolean = true) => {
   const { verge } = useVerge();
-  const { auto_check_update } = verge || {};
+  void verge;
+  void enabled;
 
-  // Determine if we should check for updates
-  // If enabled is explicitly false, don't check
-  // Otherwise, respect the auto_check_update setting (or default to true if null/undefined for manual triggers)
-  const shouldCheck = enabled && auto_check_update !== false;
+  const shouldCheck = false;
 
   const {
     data: updateInfo,

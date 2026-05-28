@@ -1,7 +1,5 @@
-import { Box, Button, LinearProgress } from "@mui/material";
+import { Box, LinearProgress } from "@mui/material";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { open as openUrl } from "@tauri-apps/plugin-shell";
-import type { DownloadEvent } from "@tauri-apps/plugin-updater";
 import { useLockFn } from "ahooks";
 import type { Ref } from "react";
 import { useImperativeHandle, useMemo, useRef, useState } from "react";
@@ -14,6 +12,11 @@ import { useUpdate } from "@/hooks/use-update";
 import { portableFlag } from "@/pages/_layout";
 import { showNotice } from "@/services/notice-service";
 import { useSetUpdateState, useUpdateState } from "@/services/states";
+
+type DownloadEvent =
+  | { event: "Started"; data: { contentLength?: number } }
+  | { event: "Progress"; data: { chunkLength: number } }
+  | { event: "Finished"; data: Record<string, never> };
 
 export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
   const { t } = useTranslation();
@@ -116,19 +119,6 @@ export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
           {t("settings.modals.update.title", {
             version: updateInfo?.version ?? "",
           })}
-          <Box>
-            <Button
-              variant="contained"
-              size="small"
-              onClick={() => {
-                openUrl(
-                  `https://github.com/clash-verge-rev/clash-verge-rev/releases/tag/v${updateInfo?.version}`,
-                );
-              }}
-            >
-              {t("settings.modals.update.actions.goToRelease")}
-            </Button>
-          </Box>
         </Box>
       }
       contentSx={{ minWidth: 360, maxWidth: 400, height: "50vh" }}

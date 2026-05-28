@@ -1,10 +1,13 @@
-import {
-  check,
-  type CheckOptions,
-  type Update,
-} from "@tauri-apps/plugin-updater";
+export type CheckOptions = Record<string, unknown>;
 
-import { version as appVersion } from "@root/package.json";
+export type Update = {
+  version: string;
+  available: boolean;
+  body?: string;
+  rawJson?: Record<string, unknown>;
+  close: () => Promise<void>;
+  downloadAndInstall: (onEvent?: unknown) => Promise<void>;
+};
 
 export type VersionParts = {
   main: number[];
@@ -129,27 +132,8 @@ export const resolveRemoteVersion = (update: Update): string | null => {
   return null;
 };
 
-const localVersionNormalized = normalizeVersion(appVersion);
-
 export const checkUpdateSafe = async (
-  options?: CheckOptions,
+  _options?: CheckOptions,
 ): Promise<Update | null> => {
-  const result = await check({ ...(options ?? {}), allowDowngrades: false });
-  if (!result) return null;
-
-  const remoteVersion = resolveRemoteVersion(result);
-  const comparison = compareVersions(remoteVersion, localVersionNormalized);
-
-  if (comparison !== null && comparison <= 0) {
-    try {
-      await result.close();
-    } catch (err) {
-      console.warn("[updater] failed to close stale update resource", err);
-    }
-    return null;
-  }
-
-  return result;
+  return null;
 };
-
-export type { CheckOptions };
