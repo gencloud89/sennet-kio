@@ -1,0 +1,100 @@
+name: Build All Platforms
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # ============================================================
+  # Windows x64
+  # ============================================================
+  win-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm prebuild
+      - run: pnpm build:fast
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sennet-vpn-win-x64
+          path: |
+            target/fast-release/sennet-vpn.exe
+            target/fast-release/bundle/nsis/*.exe
+
+  # ============================================================
+  # macOS ARM64 (Apple Silicon)
+  # ============================================================
+  macos-arm64:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm prebuild
+      - run: pnpm build:fast
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sennet-vpn-macos-arm64
+          path: |
+            target/fast-release/bundle/dmg/*.dmg
+            target/fast-release/bundle/macos/*.app
+
+  # ============================================================
+  # macOS x64 (Intel)
+  # ============================================================
+  macos-x64:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm prebuild
+      - run: pnpm build:fast
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sennet-vpn-macos-x64
+          path: |
+            target/fast-release/bundle/dmg/*.dmg
+            target/fast-release/bundle/macos/*.app
+
+  # ============================================================
+  # Create GitHub Release
+  # ============================================================
+  release:
+    needs: [win-x64, macos-arm64, macos-x64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - run: ls -R artifacts/
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: "SENNET VPN v1.0.${{ github.run_number }}"
+          files: artifacts/**/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
