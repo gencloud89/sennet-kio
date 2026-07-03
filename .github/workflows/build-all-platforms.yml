@@ -24,6 +24,10 @@ jobs:
       - run: pnpm install
       - run: pnpm prebuild
 
+      # Fetch cargo deps first so plugin source is available to patch
+      - name: Fetch cargo dependencies
+        run: cargo fetch --manifest-path src-tauri/Cargo.toml
+
       # Patch: Add PassRule to tauri-plugin-mihomo ProxyType enum
       - name: Patch PassRule into plugin
         shell: bash
@@ -56,10 +60,14 @@ jobs:
       - run: pnpm install
       - run: pnpm prebuild
 
+      # Fetch cargo deps first so plugin source is available to patch
+      - name: Fetch cargo dependencies
+        run: cargo fetch --manifest-path src-tauri/Cargo.toml
+
       # Patch: Add PassRule to tauri-plugin-mihomo ProxyType enum
       - name: Patch PassRule into plugin
         run: |
-          find ~/.cargo/git/checkouts/tauri-plugin-mihomo-* -name models.rs -exec sed -i '' 's/    LoadBalance,/    LoadBalance,\n    PassRule,/' {} \;
+          find ~/.cargo/git/checkouts/tauri-plugin-mihomo-* -name models.rs -exec perl -i -pe 's/    LoadBalance,/    LoadBalance,\n    PassRule,/' {} \;
 
       - run: pnpm build:fast
 
@@ -97,10 +105,14 @@ jobs:
       - run: pnpm install
       - run: pnpm prebuild
 
+      # Fetch cargo deps first so plugin source is available to patch
+      - name: Fetch cargo dependencies
+        run: cargo fetch --manifest-path src-tauri/Cargo.toml
+
       # Patch: Add PassRule to tauri-plugin-mihomo ProxyType enum
       - name: Patch PassRule into plugin
         run: |
-          find ~/.cargo/git/checkouts/tauri-plugin-mihomo-* -name models.rs -exec sed -i '' 's/    LoadBalance,/    LoadBalance,\n    PassRule,/' {} \;
+          find ~/.cargo/git/checkouts/tauri-plugin-mihomo-* -name models.rs -exec perl -i -pe 's/    LoadBalance,/    LoadBalance,\n    PassRule,/' {} \;
 
       - run: pnpm build:fast
 
