@@ -85,10 +85,9 @@ jobs:
   # Create GitHub Release (runs even if some jobs fail)
   # ============================================================
   release:
-    needs: [win-x64, macos-arm64, macos-x64]
+    needs: [win-x64, macos-arm64]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/download-artifact@v4
         with:
