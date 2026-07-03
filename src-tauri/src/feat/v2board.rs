@@ -4,8 +4,8 @@ use reqwest::{Client, StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-const BASE_URL: &str = "https://your-panel-domain.com";
-const DEFAULT_SUBSCRIBE_DOMAIN: &str = "your-subscribe-domain.com";
+const BASE_URL: &str = "https://kio.senviet.us";
+const DEFAULT_SUBSCRIBE_DOMAIN: &str = "venom.cdy.892.htd892.com";
 const DOMAIN_CONFIG_PATH: &str = "/domain-backup-config.json";
 const USER_AGENT: &str = "SENNET-VPN/1.0 clash-compatible";
 const TIMEOUT_SECS: u64 = 10;
@@ -94,8 +94,24 @@ struct DomainConfig {
 impl Default for DomainConfig {
     fn default() -> Self {
         Self {
-            panel_domains: vec![BASE_URL.to_string()],
-            subscribe_domains: vec![DEFAULT_SUBSCRIBE_DOMAIN.to_string()],
+            panel_domains: vec![
+                BASE_URL.to_string(),
+                "https://mirrorhk1.scdh2268.com".to_string(),
+                "https://mirrorhk2.scdh2268.com".to_string(),
+                "https://mirrorhk3.scdh2268.com".to_string(),
+                "https://mirrorhk4.scdh2268.com".to_string(),
+                "https://mirrorhk5.scdh2268.com".to_string(),
+                "https://mirrorhk6.scdh2268.com".to_string(),
+            ],
+            subscribe_domains: vec![
+                DEFAULT_SUBSCRIBE_DOMAIN.to_string(),
+                "submirror1.scdh2268.com".to_string(),
+                "submirror2.scdh2268.com".to_string(),
+                "submirror3.scdh2268.com".to_string(),
+                "submirror4.scdh2268.com".to_string(),
+                "submirror5.scdh2268.com".to_string(),
+                "submirror6.scdh2268.com".to_string(),
+            ],
             oss_domains: vec![],
         }
     }
