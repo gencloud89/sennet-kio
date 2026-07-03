@@ -14,7 +14,7 @@ import {
 } from "@mui/material";
 import { invoke } from "@tauri-apps/api/core";
 import { useLockFn } from "ahooks";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { delayGroup, selectNodeForGroup } from "tauri-plugin-mihomo-api";
 
 import { isInfoNode } from "@/components/proxy/use-filter-sort";
@@ -29,7 +29,14 @@ const CARD = "#161B22";
 const BORDER = "#21262d";
 
 const TCP_TEST_TIMEOUT = 5000;
-const DELAY_TEST_URL = "http://www.gstatic.com/generate_204";
+// China-compatible delay test URLs with automatic fallback.
+// Google gstatic.com is blocked in China; the China-friendly URLs work behind GFW.
+const DELAY_TEST_URLS = [
+  "http://www.gstatic.com/generate_204",
+  "http://cp.cloud.360.cn/generate_204",
+  "http://connect.rom.miui.com/generate_204",
+  "http://www.baidu.com",
+];
 
 function getNodeFlag(name: string): string {
   const n = (name ?? "").toLowerCase();
@@ -131,6 +138,13 @@ export default function ProxiesPage() {
   const [search, setSearch] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [autoSelecting, setAutoSelecting] = useState(false);
+
+  // Force-refresh proxies on every mount to ensure data is fresh.
+  // The backend events may fire before the frontend listeners are ready;
+  // this guarantees a refetch when the user navigates to this page.
+  useEffect(() => {
+    refreshProxy();
+  }, [refreshProxy]);
   // Track per-node delays and testing state
   const [delayMap, setDelayMap] = useState<Record<string, number>>({});
   const [testingSet, setTestingSet] = useState<Set<string>>(new Set());
@@ -170,11 +184,27 @@ export default function ProxiesPage() {
     changeProxy(groupName, proxyName, currentSelected);
   };
 
+  // Run delay test with China-friendly URL fallback.
+  // Google gstatic.com is blocked in China; falls back to local URLs.
+  const runDelayWithFallback = async (group: string) => {
+    for (const url of DELAY_TEST_URLS) {
+      try {
+        const results = await delayGroup(group, url, TCP_TEST_TIMEOUT);
+        if (results && Object.keys(results).length > 0) {
+          return results;
+        }
+      } catch {
+        // Try next URL
+      }
+    }
+    throw new Error("All delay test URLs failed");
+  };
+
   // Test all nodes (refresh)
   const handleRefreshDelay = useLockFn(async () => {
     setRefreshing(true);
     try {
-      await delayGroup(groupName, DELAY_TEST_URL, TCP_TEST_TIMEOUT);
+      await runDelayWithFallback(groupName);
       await refreshProxy();
     } catch {
       // ignore
@@ -187,12 +217,7 @@ export default function ProxiesPage() {
   const handleAutoSelect = useLockFn(async () => {
     setAutoSelecting(true);
     try {
-      // delayGroup returns Record<nodeName, delayMs>; timeout nodes are excluded
-      const results = await delayGroup(
-        groupName,
-        DELAY_TEST_URL,
-        TCP_TEST_TIMEOUT,
-      );
+      const results = await runDelayWithFallback(groupName);
       const best = Object.entries(results)
         .filter(([n]) => !isInfoNode(n) && !SKIP_GROUPS.includes(n))
         .sort(([, a], [, b]) => a - b)[0];

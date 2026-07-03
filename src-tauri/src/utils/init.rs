@@ -156,18 +156,18 @@ async fn init_dns_config() -> Result<()> {
             "default-nameserver".into(),
             Value::Sequence(vec![
                 Value::String("system".into()),
+                Value::String("223.5.5.5".into()),
+                Value::String("119.29.29.29".into()),
                 Value::String("223.6.6.6".into()),
-                Value::String("8.8.8.8".into()),
-                Value::String("2400:3200::1".into()),
-                Value::String("2001:4860:4860::8888".into()),
             ]),
         ),
         (
             "nameserver".into(),
             Value::Sequence(vec![
-                Value::String("8.8.8.8".into()),
                 Value::String("https://doh.pub/dns-query".into()),
                 Value::String("https://dns.alidns.com/dns-query".into()),
+                Value::String("223.5.5.5".into()),
+                Value::String("119.29.29.29".into()),
             ]),
         ),
         ("fallback".into(), Value::Sequence(vec![])),
@@ -326,7 +326,7 @@ pub async fn init_resources() -> Result<()> {
         std::mem::drop(fs::create_dir_all(&res_dir).await);
     }
 
-    let file_list = ["Country.mmdb", "geoip.dat", "geosite.dat"];
+    let file_list = ["Country.mmdb", "geoip.dat", "geosite.dat", "domain-backup-config.json"];
 
     // copy the resource file
     // if the source file is newer than the destination file, copy it over

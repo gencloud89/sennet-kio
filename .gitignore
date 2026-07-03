@@ -22,3 +22,12 @@ CLAUDE.md
 src-tauri/sidecar/
 src-tauri/resources/*.dat
 src-tauri/resources/*.mmdb
+
+# Dev scripts
+scripts/
+
+# Backups
+BACKUP/
+
+# Logs
+*.log

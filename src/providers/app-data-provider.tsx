@@ -29,7 +29,7 @@ import {
 const TQ_MIHOMO = {
   refetchOnWindowFocus: false,
   refetchOnReconnect: false,
-  staleTime: 1500,
+  staleTime: 0, // Always refetch — ensures proxy data is fresh after login
   retry: 3,
   retryDelay: (attempt: number) => Math.min(200 * 2 ** attempt, 3000),
 } as const;
@@ -122,7 +122,8 @@ export const AppDataProvider = ({
 
   useEffect(() => {
     let lastProfileId: string | null = null;
-    let lastUpdateTime = 0;
+    let lastProfileUpdateTime = 0;
+    let lastProxyUpdateTime = 0;
     const refreshThrottle = 800;
     const cleanupFns: Array<() => void> = [];
 
@@ -131,20 +132,24 @@ export const AppDataProvider = ({
       const now = Date.now();
       if (
         lastProfileId === newProfileId &&
-        now - lastUpdateTime < refreshThrottle
+        now - lastProfileUpdateTime < refreshThrottle
       ) {
         return;
       }
       lastProfileId = newProfileId;
-      lastUpdateTime = now;
+      lastProfileUpdateTime = now;
       refreshRules().catch(() => {});
       refreshRuleProviders().catch(() => {});
     };
 
     const handleRefreshProxy = () => {
       const now = Date.now();
-      if (now - lastUpdateTime <= refreshThrottle) return;
-      lastUpdateTime = now;
+      // Use a SEPARATE throttle from handleProfileChanged.
+      // Previously these shared lastUpdateTime, so when profile-changed
+      // fired just before verge://refresh-proxy-config, the proxy refresh
+      // was always throttled and the frontend never updated its proxy list.
+      if (now - lastProxyUpdateTime <= refreshThrottle) return;
+      lastProxyUpdateTime = now;
       refreshProxy().catch(() => {});
     };
 

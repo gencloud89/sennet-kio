@@ -18,6 +18,7 @@ use crate::{
 use clash_verge_logging::{Type, logging};
 use scopeguard::defer;
 use smartstring::alias::String;
+use tauri::Emitter as _;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -238,6 +239,10 @@ async fn handle_success(current_value: Option<&String>) -> CmdResult<ValidationO
         logging!(info, Type::Cmd, "向前端发送配置变更事件: {}", current);
         handle::Handle::notify_profile_changed(current);
     }
+
+    // Emit refresh-proxy-config so the frontend proxies page refreshes.
+    // The profile-changed event only triggers a rule refresh, not a proxy refresh.
+    let _ = handle::Handle::app_handle().emit("verge://refresh-proxy-config", ());
 
     Ok(ValidationOutcome::Valid)
 }

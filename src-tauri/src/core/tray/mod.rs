@@ -975,7 +975,7 @@ fn on_menu_event(_: &AppHandle, event: MenuEvent) {
                     Some(index_str) => index_str,
                     None => return,
                 };
-                feat::toggle_proxy_profile(profile_index.into()).await;
+                let _ = feat::toggle_proxy_profile(profile_index).await;
             }
             id if id.starts_with("proxy_") => {
                 // proxy_{group_name}_{proxy_name}

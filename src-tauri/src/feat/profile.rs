@@ -5,16 +5,36 @@ use crate::{
     utils::help::{mask_err, mask_url},
 };
 use anyhow::{Result, bail};
-use clash_verge_logging::{Type, logging, logging_error};
+use clash_verge_logging::{Type, logging};
 use smartstring::alias::String;
 use tauri::Emitter as _;
 
-/// Toggle proxy profile
-pub async fn toggle_proxy_profile(profile_index: String) {
-    logging_error!(
-        Type::Config,
-        cmd::patch_profiles_config_by_profile_index(profile_index).await
-    );
+/// Toggle proxy profile.
+/// Returns the validation outcome so callers can react to Busy/Skipped states.
+pub async fn toggle_proxy_profile(profile_index: &str) -> Option<ValidationOutcome> {
+    match cmd::patch_profiles_config_by_profile_index(profile_index.into()).await {
+        Ok(outcome) => {
+            match &outcome {
+                ValidationOutcome::Valid => {
+                    logging!(info, Type::Config, "SENNET: profile switch succeeded for {}", profile_index);
+                }
+                ValidationOutcome::Busy => {
+                    logging!(warn, Type::Config, "SENNET: profile switch BUSY for {} — another switch in progress", profile_index);
+                }
+                ValidationOutcome::Skipped { reason } => {
+                    logging!(warn, Type::Config, "SENNET: profile switch SKIPPED for {} — {:?}", profile_index, reason);
+                }
+                other => {
+                    logging!(warn, Type::Config, "SENNET: profile switch returned non-valid outcome for {}: {}", profile_index, other);
+                }
+            }
+            Some(outcome)
+        }
+        Err(err) => {
+            logging!(error, Type::Config, "SENNET: profile switch FAILED for {}: {}", profile_index, err);
+            None
+        }
+    }
 }
 
 pub async fn switch_proxy_node(group_name: &str, proxy_name: &str) {

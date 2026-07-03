@@ -4,8 +4,8 @@ use reqwest::{Client, StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-const BASE_URL: &str = "https://kio.senviet.us";
-const DEFAULT_SUBSCRIBE_DOMAIN: &str = "venom.cdy.892.htd892.com";
+const BASE_URL: &str = "https://your-panel-domain.com";
+const DEFAULT_SUBSCRIBE_DOMAIN: &str = "your-subscribe-domain.com";
 const DOMAIN_CONFIG_PATH: &str = "/domain-backup-config.json";
 const USER_AGENT: &str = "SENNET-VPN/1.0 clash-compatible";
 const TIMEOUT_SECS: u64 = 10;
@@ -119,8 +119,68 @@ fn build_client() -> Result<Client, V2BoardError> {
     Client::builder()
         .timeout(Duration::from_secs(TIMEOUT_SECS))
         .user_agent(USER_AGENT)
+        .danger_accept_invalid_certs(true)
         .build()
         .map_err(|e| V2BoardError::NetworkError(e.to_string()))
+}
+
+/// Build a client that routes through the system proxy.
+/// Used as fallback when direct connection fails (e.g. behind GFW).
+fn build_proxied_client() -> Result<Client, V2BoardError> {
+    use reqwest::Proxy;
+    // Try to detect system proxy
+    let mut builder = Client::builder()
+        .timeout(Duration::from_secs(TIMEOUT_SECS))
+        .user_agent(USER_AGENT)
+        .danger_accept_invalid_certs(true);
+
+    // Use system proxy if available
+    if let Ok(sysproxy) = sysproxy::Sysproxy::get_system_proxy() {
+        if sysproxy.enable {
+            let proxy_url = format!("http://{}:{}", sysproxy.host, sysproxy.port);
+            if let Ok(proxy) = Proxy::all(&proxy_url) {
+                builder = builder.proxy(proxy);
+                logging!(info, Type::Config, "V2Board: using system proxy {}", proxy_url);
+            }
+        }
+    }
+
+    builder.build().map_err(|e| V2BoardError::NetworkError(e.to_string()))
+}
+
+/// Try an API call with direct connection first, then with system proxy.
+async fn try_with_proxy_fallback<T, F, Fut>(
+    operation: &str,
+    f: F,
+) -> Result<T, V2BoardError>
+where
+    F: Fn(&Client) -> Fut,
+    Fut: std::future::Future<Output = Result<T, V2BoardError>>,
+{
+    // Try direct connection
+    match build_client() {
+        Ok(client) => {
+            match f(&client).await {
+                Ok(result) => return Ok(result),
+                Err(e) => {
+                    logging!(warn, Type::Config, "V2Board: {operation} direct connection failed: {e}, trying proxy...");
+                }
+            }
+        }
+        Err(e) => {
+            logging!(warn, Type::Config, "V2Board: failed to build direct client: {e}");
+        }
+    }
+
+    // Try system proxy
+    match build_proxied_client() {
+        Ok(client) => f(&client).await,
+        Err(_) => {
+            // Last attempt: try direct again (network might have recovered)
+            let client = build_client()?;
+            f(&client).await
+        }
+    }
 }
 
 fn normalize_domains(
@@ -155,65 +215,101 @@ fn normalize_domains(
     (!normalized.is_empty()).then_some(normalized)
 }
 
-async fn domain_config_path() -> Option<std::path::PathBuf> {
+fn domain_config_path() -> Option<std::path::PathBuf> {
     dirs::app_home_dir().ok().map(|dir| dir.join("domain-backup-config.json"))
 }
 
+/// Load cached config from disk (updated by server fetch).
 async fn load_cached_domain_config() -> Option<DomainConfig> {
-    let path = domain_config_path().await?;
+    let path = domain_config_path()?;
     let text = tokio::fs::read_to_string(path).await.ok()?;
     let remote = serde_json::from_str::<RemoteDomainConfig>(&text).ok()?;
+    Some(DomainConfig::from_remote(remote))
+}
 
+/// Load bundled config from app resources (shipped with the app).
+async fn load_bundled_domain_config() -> Option<DomainConfig> {
+    let res_dir = dirs::app_resources_dir().ok()?;
+    let path = res_dir.join("domain-backup-config.json");
+    let text = tokio::fs::read_to_string(path).await.ok()?;
+    let remote = serde_json::from_str::<RemoteDomainConfig>(&text).ok()?;
+    logging!(info, Type::Config, "V2Board: using bundled domain config");
     Some(DomainConfig::from_remote(remote))
 }
 
 async fn save_domain_config(remote: &RemoteDomainConfig) {
-    let Some(path) = domain_config_path().await else {
+    let Some(path) = domain_config_path() else {
         return;
     };
-
     if let Some(parent) = path.parent() {
         let _ = tokio::fs::create_dir_all(parent).await;
     }
-
     if let Ok(text) = serde_json::to_string_pretty(remote) {
         let _ = tokio::fs::write(path, text).await;
+        logging!(info, Type::Config, "V2Board: domain config saved to disk");
     }
 }
 
+/// Resolve domain configuration with multiple fallback layers:
+/// 1. Try to fetch latest from server (using cached/bundled domains)
+/// 2. If server fetch succeeds → save & use it
+/// 3. If server fetch fails → use cached version from disk
+/// 4. If no cache → use bundled version from app resources
+/// 5. If no bundled → use hardcoded defaults
 async fn resolve_domain_config(client: &Client) -> DomainConfig {
     let cached = load_cached_domain_config().await;
-    let seed_config = cached.clone().unwrap_or_default();
+    let bundled = load_bundled_domain_config().await;
 
+    // Build the list of domains to try for fetching updated config.
+    // Merge cached + bundled + hardcoded, preferring cached.
+    let seed_config = cached.clone().unwrap_or_else(|| {
+        bundled.clone().unwrap_or_default()
+    });
+
+    logging!(info, Type::Config, "V2Board: trying to fetch domain config from {} panel domains", seed_config.panel_domains.len());
+
+    // Try to fetch updated config from each known panel domain
     for domain in seed_config
         .panel_domains
         .iter()
         .chain(seed_config.oss_domains.iter())
     {
         let url = format!("{domain}{DOMAIN_CONFIG_PATH}");
+        logging!(debug, Type::Config, "V2Board: trying {}", url);
         let Ok(resp) = client.get(&url).send().await else {
+            logging!(warn, Type::Config, "V2Board: failed to fetch domain config from {}", url);
             continue;
         };
-
         if !resp.status().is_success() {
+            logging!(warn, Type::Config, "V2Board: domain config fetch HTTP {} from {}", resp.status(), url);
             continue;
         }
-
         let Ok(text) = resp.text().await else {
             continue;
         };
-
         let Ok(remote) = serde_json::from_str::<RemoteDomainConfig>(&text) else {
             continue;
         };
-
+        // Success! Save to disk and use it.
         save_domain_config(&remote).await;
+        logging!(info, Type::Config, "V2Board: domain config updated from {}", url);
         return DomainConfig::from_remote(remote);
     }
 
-    cached.unwrap_or_default()
+    // Server fetch failed — fall back to cached, then bundled, then defaults.
+    if cached.is_some() {
+        logging!(info, Type::Config, "V2Board: using cached domain config (server unreachable)");
+        return cached.unwrap();
+    }
+    if bundled.is_some() {
+        logging!(info, Type::Config, "V2Board: using bundled domain config (no cache, server unreachable)");
+        return bundled.unwrap();
+    }
+    logging!(warn, Type::Config, "V2Board: falling back to hardcoded defaults");
+    DomainConfig::default()
 }
 
+#[allow(dead_code)]
 fn subscribe_url_candidates(
     subscribe_url: &str,
     config: &DomainConfig,
@@ -349,46 +445,7 @@ impl V2BoardClient {
         Err(last_error.unwrap_or_else(|| V2BoardError::NetworkError("No panel domain available".into())))
     }
 
-    pub async fn fetch_subscription_content(
-        auth_data: &str,
-        subscribe_url: &str,
-    ) -> Result<std::string::String, V2BoardError> {
-        let client = build_client()?;
-        let domain_config = resolve_domain_config(&client).await;
-        let mut last_error = None;
-
-        for url in subscribe_url_candidates(subscribe_url, &domain_config) {
-            let resp = match client
-                .get(&url)
-                .header("Authorization", auth_data)
-                .header("User-Agent", USER_AGENT)
-                .send()
-                .await
-            {
-                Ok(resp) => resp,
-                Err(e) => {
-                    last_error = Some(V2BoardError::NetworkError(e.to_string()));
-                    continue;
-                }
-            };
-
-            match resp.status() {
-                StatusCode::OK => {
-                    return resp
-                        .text()
-                        .await
-                        .map_err(|e| V2BoardError::NetworkError(e.to_string()));
-                }
-                StatusCode::FORBIDDEN => return Err(V2BoardError::Unauthorized),
-                status => {
-                    last_error = Some(V2BoardError::NetworkError(format!("HTTP {status}")));
-                }
-            }
-        }
-
-        Err(last_error.unwrap_or_else(|| V2BoardError::NetworkError("No subscribe domain available".into())))
-    }
-
+    #[allow(dead_code)]
     pub async fn resolve_subscribe_url(
         auth_data: &str,
         subscribe_url: &str,
