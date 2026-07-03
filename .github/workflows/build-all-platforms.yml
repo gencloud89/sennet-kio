@@ -32,7 +32,7 @@ jobs:
             target/fast-release/bundle/nsis/*.exe
 
   # ============================================================
-  # macOS ARM64 (Apple Silicon)
+  # macOS ARM64 (Apple Silicon M1/M2/M3/M4)
   # ============================================================
   macos-arm64:
     runs-on: macos-latest
@@ -47,14 +47,22 @@ jobs:
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
       - run: pnpm install
+        env:
+          CI: true
       - run: pnpm prebuild
-      - run: pnpm build:fast
+      - run: pnpm build
+        env:
+          CI: true
+          APPLE_SIGNING_IDENTITY: ""
+          APPLE_CERTIFICATE: ""
+          APPLE_CERTIFICATE_PASSWORD: ""
+          APPLE_TEAM_ID: ""
       - uses: actions/upload-artifact@v4
         with:
           name: sennet-vpn-macos-arm64
           path: |
-            target/fast-release/bundle/dmg/*.dmg
-            target/fast-release/bundle/macos/*.app
+            target/release/bundle/dmg/*.dmg
+            target/release/bundle/macos/*.app
 
   # ============================================================
   # macOS x64 (Intel)
@@ -72,14 +80,22 @@ jobs:
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
       - run: pnpm install
+        env:
+          CI: true
       - run: pnpm prebuild
-      - run: pnpm build:fast
+      - run: pnpm build
+        env:
+          CI: true
+          APPLE_SIGNING_IDENTITY: ""
+          APPLE_CERTIFICATE: ""
+          APPLE_CERTIFICATE_PASSWORD: ""
+          APPLE_TEAM_ID: ""
       - uses: actions/upload-artifact@v4
         with:
           name: sennet-vpn-macos-x64
           path: |
-            target/fast-release/bundle/dmg/*.dmg
-            target/fast-release/bundle/macos/*.app
+            target/release/bundle/dmg/*.dmg
+            target/release/bundle/macos/*.app
 
   # ============================================================
   # Create GitHub Release (runs even if some jobs fail)
@@ -95,8 +111,21 @@ jobs:
       - run: ls -R artifacts/
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: "SENNET VPN v1.0.${{ github.run_number }}"
+          tag_name: v1.1.${{ github.run_number }}
+          name: "SENNET VPN v1.1.${{ github.run_number }} (Win x64 + Mac M + Mac Intel)"
+          body: |
+            ## Cach cai dat macOS
+
+            Sau khi tai DMG ve va keo app vao Applications:
+
+            **Mo terminal va chay:**
+            ```bash
+            sudo xattr -cr /Applications/SENNET\ VPN.app
+            ```
+
+            Sau do mo app tu Applications hoac Spotlight.
+
+            **Tai sao can?** macOS Gatekeeper chan ung dung khong duoc notarize. `xattr -cr` go quarantine flag.
           files: artifacts/**/*
           draft: false
           prerelease: false
