@@ -50,19 +50,13 @@ jobs:
         env:
           CI: true
       - run: pnpm prebuild
-      - run: pnpm build
-        env:
-          CI: true
-          APPLE_SIGNING_IDENTITY: ""
-          APPLE_CERTIFICATE: ""
-          APPLE_CERTIFICATE_PASSWORD: ""
-          APPLE_TEAM_ID: ""
+      - run: pnpm build:fast
       - uses: actions/upload-artifact@v4
         with:
           name: sennet-vpn-macos-arm64
           path: |
-            target/release/bundle/dmg/*.dmg
-            target/release/bundle/macos/*.app
+            target/fast-release/bundle/dmg/*.dmg
+            target/fast-release/bundle/macos/*.app
 
   # ============================================================
   # macOS x64 (Intel)
@@ -83,19 +77,13 @@ jobs:
         env:
           CI: true
       - run: pnpm prebuild
-      - run: pnpm build
-        env:
-          CI: true
-          APPLE_SIGNING_IDENTITY: ""
-          APPLE_CERTIFICATE: ""
-          APPLE_CERTIFICATE_PASSWORD: ""
-          APPLE_TEAM_ID: ""
+      - run: pnpm build:fast
       - uses: actions/upload-artifact@v4
         with:
           name: sennet-vpn-macos-x64
           path: |
-            target/release/bundle/dmg/*.dmg
-            target/release/bundle/macos/*.app
+            target/fast-release/bundle/dmg/*.dmg
+            target/fast-release/bundle/macos/*.app
 
   # ============================================================
   # Create GitHub Release (runs even if some jobs fail)
