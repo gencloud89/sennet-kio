@@ -23,6 +23,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: pnpm install
       - run: pnpm prebuild
+
+      # Patch: Add PassRule to tauri-plugin-mihomo ProxyType enum
+      - name: Patch PassRule into plugin
+        shell: bash
+        run: |
+          find ~/.cargo/git/checkouts/tauri-plugin-mihomo-* -name models.rs -exec sed -i 's/    LoadBalance,/    LoadBalance,\n    PassRule,/' {} \;
+
       - run: pnpm build:fast
       - uses: actions/upload-artifact@v4
         with:
@@ -47,10 +54,24 @@ jobs:
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
       - run: pnpm install
-        env:
-          CI: true
       - run: pnpm prebuild
+
+      # Patch: Add PassRule to tauri-plugin-mihomo ProxyType enum
+      - name: Patch PassRule into plugin
+        run: |
+          find ~/.cargo/git/checkouts/tauri-plugin-mihomo-* -name models.rs -exec sed -i '' 's/    LoadBalance,/    LoadBalance,\n    PassRule,/' {} \;
+
       - run: pnpm build:fast
+
+      # Ad-hoc sign the app so it runs without xattr command
+      - name: Ad-hoc sign macOS app
+        run: |
+          APP="target/fast-release/bundle/macos/SENNET VPN.app"
+          if [ -d "$APP" ]; then
+            codesign --force --deep --sign - "$APP"
+            echo "Signed: $APP"
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: sennet-vpn-macos-arm64
@@ -74,10 +95,24 @@ jobs:
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
       - run: pnpm install
-        env:
-          CI: true
       - run: pnpm prebuild
+
+      # Patch: Add PassRule to tauri-plugin-mihomo ProxyType enum
+      - name: Patch PassRule into plugin
+        run: |
+          find ~/.cargo/git/checkouts/tauri-plugin-mihomo-* -name models.rs -exec sed -i '' 's/    LoadBalance,/    LoadBalance,\n    PassRule,/' {} \;
+
       - run: pnpm build:fast
+
+      # Ad-hoc sign the app
+      - name: Ad-hoc sign macOS app
+        run: |
+          APP="target/fast-release/bundle/macos/SENNET VPN.app"
+          if [ -d "$APP" ]; then
+            codesign --force --deep --sign - "$APP"
+            echo "Signed: $APP"
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: sennet-vpn-macos-x64
@@ -86,10 +121,10 @@ jobs:
             target/fast-release/bundle/macos/*.app
 
   # ============================================================
-  # Create GitHub Release (runs even if some jobs fail)
+  # Create GitHub Release
   # ============================================================
   release:
-    needs: [win-x64, macos-arm64]
+    needs: [win-x64, macos-arm64, macos-x64]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
@@ -100,20 +135,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.1.${{ github.run_number }}
-          name: "SENNET VPN v1.1.${{ github.run_number }} (Win x64 + Mac M + Mac Intel)"
-          body: |
-            ## Cach cai dat macOS
-
-            Sau khi tai DMG ve va keo app vao Applications:
-
-            **Mo terminal va chay:**
-            ```bash
-            sudo xattr -cr /Applications/SENNET\ VPN.app
-            ```
-
-            Sau do mo app tu Applications hoac Spotlight.
-
-            **Tai sao can?** macOS Gatekeeper chan ung dung khong duoc notarize. `xattr -cr` go quarantine flag.
+          name: "SENNET VPN v1.1.${{ github.run_number }} (Win64 + Mac M + Mac Intel)"
           files: artifacts/**/*
           draft: false
           prerelease: false
