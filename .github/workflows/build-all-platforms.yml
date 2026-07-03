@@ -136,7 +136,7 @@ jobs:
   # Create GitHub Release
   # ============================================================
   release:
-    needs: [win-x64, macos-arm64, macos-x64]
+    needs: [win-x64, macos-arm64]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
